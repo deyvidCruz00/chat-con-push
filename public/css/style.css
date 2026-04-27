@@ -44,6 +44,69 @@ button {
   background-color: #2c3e50;
 }
 
+.login-card {
+  width: 86%;
+  max-width: 420px;
+  margin: 0 auto 1.5em;
+  padding: 1.25em;
+  background-color: #ecf0f1;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(44, 62, 80, 0.12);
+  text-align: left;
+}
+
+.login-card h1 {
+  margin: 0 0 0.35em;
+  font-family: "Lato";
+  font-size: 1.6em;
+  color: #2c3e50;
+}
+
+.login-card p {
+  margin: 0 0 1em;
+  line-height: 1.35em;
+  color: #607172;
+}
+
+.login-card label {
+  display: block;
+  margin-bottom: 0.45em;
+  font-family: "Lato";
+  font-weight: bold;
+  color: #2c3e50;
+}
+
+.login-card input[type="text"] {
+  width: 100%;
+  border: 1px solid #bdc3c7;
+  border-radius: 5px;
+  padding: 0.75em;
+  color: #2c3e50;
+  font-size: 16px;
+  outline: none;
+}
+
+.login-card input[type="text"]:focus {
+  border-color: #3498db;
+  box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.15);
+}
+
+.login-error {
+  margin-top: 0.8em !important;
+  margin-bottom: 0 !important;
+  color: #c0392b !important;
+  font-weight: bold;
+}
+
+.login-btn {
+  width: 80%;
+  max-width: 420px;
+  margin-top: 2em;
+  background-color: #3498db;
+  font-weight: bold;
+  padding: 0.85em;
+}
+
 .push-permission-status {
   position: absolute;
   right: 10px;
@@ -98,6 +161,11 @@ button {
   border-radius: 50%;
   border: 5px solid #ecf0f1;
   position: relative; 
+}
+
+.seleccion-avatar-activa {
+  border-color: #3498db;
+  box-shadow: 0 0 0 5px rgba(52, 152, 219, 0.2);
 }
 
 /* Modal */

@@ -43,6 +43,10 @@ var modal       = $('#modal');
 var modalAvatar = $('#modal-avatar');
 var avatarBtns  = $('.seleccion-avatar');
 var txtMensaje  = $('#txtMensaje');
+var loginForm   = $('#login-form');
+var txtUsuario  = $('#txtUsuario');
+var heroInput   = $('#heroSeleccionado');
+var loginError  = $('#login-error');
 
 var btnActivadas    = $('.btn-noti-activadas');
 var btnDesactivadas = $('.btn-noti-desactivadas');
@@ -51,6 +55,162 @@ var pushStatusBadge = $('#push-permission-status');
 
 // El usuario, contiene el ID del hÃ©roe seleccionado
 var usuario;
+var usuarioAutenticado;
+var heroeSeleccionado;
+
+var AUTH_DB_NAME = 'chat-superheroes-auth';
+var AUTH_DB_VERSION = 1;
+var AUTH_USERS_STORE = 'usuarios';
+var AUTH_SESSION_STORE = 'sesion';
+var CURRENT_SESSION_ID = 'actual';
+
+
+function abrirAuthDB() {
+    return new Promise(function(resolve, reject) {
+        if (!('indexedDB' in window)) {
+            reject(new Error('IndexedDB no está disponible en este navegador.'));
+            return;
+        }
+
+        var request = indexedDB.open(AUTH_DB_NAME, AUTH_DB_VERSION);
+
+        request.onupgradeneeded = function(event) {
+            var db = event.target.result;
+
+            if (!db.objectStoreNames.contains(AUTH_USERS_STORE)) {
+                db.createObjectStore(AUTH_USERS_STORE, { keyPath: 'username' });
+            }
+
+            if (!db.objectStoreNames.contains(AUTH_SESSION_STORE)) {
+                db.createObjectStore(AUTH_SESSION_STORE, { keyPath: 'id' });
+            }
+        };
+
+        request.onsuccess = function(event) {
+            resolve(event.target.result);
+        };
+
+        request.onerror = function(event) {
+            reject(event.target.error);
+        };
+    });
+}
+
+function guardarUsuarioAutenticado(datosUsuario) {
+    return abrirAuthDB().then(function(db) {
+        return new Promise(function(resolve, reject) {
+            var tx = db.transaction([AUTH_USERS_STORE, AUTH_SESSION_STORE], 'readwrite');
+            var usersStore = tx.objectStore(AUTH_USERS_STORE);
+            var sessionStore = tx.objectStore(AUTH_SESSION_STORE);
+
+            usersStore.put(datosUsuario);
+            sessionStore.put({
+                id: CURRENT_SESSION_ID,
+                username: datosUsuario.username,
+                actualizado: new Date().toISOString()
+            });
+
+            tx.oncomplete = function() {
+                db.close();
+                resolve(datosUsuario);
+            };
+
+            tx.onerror = function(event) {
+                db.close();
+                reject(event.target.error);
+            };
+        });
+    });
+}
+
+function obtenerUsuarioAutenticado() {
+    return abrirAuthDB().then(function(db) {
+        return new Promise(function(resolve, reject) {
+            var tx = db.transaction([AUTH_USERS_STORE, AUTH_SESSION_STORE], 'readonly');
+            var sessionStore = tx.objectStore(AUTH_SESSION_STORE);
+            var usersStore = tx.objectStore(AUTH_USERS_STORE);
+            var sessionRequest = sessionStore.get(CURRENT_SESSION_ID);
+
+            sessionRequest.onsuccess = function() {
+                var sesion = sessionRequest.result;
+
+                if (!sesion || !sesion.username) {
+                    resolve(null);
+                    return;
+                }
+
+                var userRequest = usersStore.get(sesion.username);
+                userRequest.onsuccess = function() {
+                    resolve(userRequest.result || null);
+                };
+                userRequest.onerror = function(event) {
+                    reject(event.target.error);
+                };
+            };
+
+            sessionRequest.onerror = function(event) {
+                reject(event.target.error);
+            };
+
+            tx.oncomplete = function() {
+                db.close();
+            };
+        });
+    });
+}
+
+function limpiarSesionAutenticada() {
+    return abrirAuthDB().then(function(db) {
+        return new Promise(function(resolve, reject) {
+            var tx = db.transaction(AUTH_SESSION_STORE, 'readwrite');
+            tx.objectStore(AUTH_SESSION_STORE).delete(CURRENT_SESSION_ID);
+
+            tx.oncomplete = function() {
+                db.close();
+                resolve();
+            };
+
+            tx.onerror = function(event) {
+                db.close();
+                reject(event.target.error);
+            };
+        });
+    });
+}
+
+function aplicarUsuarioAutenticado(datosUsuario) {
+    usuarioAutenticado = datosUsuario;
+    usuario = datosUsuario.heroe;
+    heroeSeleccionado = datosUsuario.heroe;
+
+    titulo.text(datosUsuario.nombre + ' @' + usuario);
+    modalAvatar.attr('src', 'img/avatars/' + usuario + '.jpg');
+    logIn(true);
+}
+
+function mostrarErrorLogin(mensaje) {
+    loginError.text(mensaje).removeClass('oculto');
+}
+
+function ocultarErrorLogin() {
+    loginError.addClass('oculto');
+}
+
+function inicializarAutenticacion() {
+    obtenerUsuarioAutenticado()
+        .then(function(datosUsuario) {
+            if (datosUsuario) {
+                aplicarUsuarioAutenticado(datosUsuario);
+                return;
+            }
+
+            logIn(false);
+        })
+        .catch(function(err) {
+            console.log('No se pudo restaurar la sesión:', err);
+            logIn(false);
+        });
+}
 
 
 function normalizarPermiso(permiso) {
@@ -140,7 +300,8 @@ function logIn( ingreso ) {
         timeline.addClass('oculto');
         avatarSel.removeClass('oculto');
 
-        titulo.text('Seleccione Personaje');
+        titulo.text('Login');
+        modalAvatar.attr('src', 'img/avatars/spiderman.jpg');
     
     }
 
@@ -150,18 +311,56 @@ function logIn( ingreso ) {
 // Seleccion de personaje
 avatarBtns.on('click', function() {
 
-    usuario = $(this).data('user');
+    heroeSeleccionado = $(this).data('user');
+    heroInput.val(heroeSeleccionado);
+    avatarBtns.removeClass('seleccion-avatar-activa');
+    $(this).addClass('seleccion-avatar-activa');
+    ocultarErrorLogin();
 
-    titulo.text('@' + usuario);
+});
 
-    logIn(true);
+loginForm.on('submit', function(event) {
+    event.preventDefault();
 
+    var nombre = txtUsuario.val().trim();
+    var heroe = heroInput.val();
+
+    if (!nombre || !heroe) {
+        mostrarErrorLogin('Debe ingresar un usuario y seleccionar un superhéroe.');
+        return;
+    }
+
+    var datosUsuario = {
+        username: nombre.toLowerCase(),
+        nombre: nombre,
+        heroe: heroe,
+        actualizado: new Date().toISOString()
+    };
+
+    guardarUsuarioAutenticado(datosUsuario)
+        .then(aplicarUsuarioAutenticado)
+        .catch(function(err) {
+            console.log('Error guardando usuario en IndexedDB:', err);
+            mostrarErrorLogin('No se pudo guardar el usuario en IndexedDB.');
+        });
 });
 
 // Boton de salir
 salirBtn.on('click', function() {
 
-    logIn(false);
+    limpiarSesionAutenticada()
+        .catch(function(err) {
+            console.log('No se pudo limpiar la sesión:', err);
+        })
+        .then(function() {
+            usuario = null;
+            usuarioAutenticado = null;
+            heroeSeleccionado = null;
+            txtUsuario.val('');
+            heroInput.val('');
+            avatarBtns.removeClass('seleccion-avatar-activa');
+            logIn(false);
+        });
 
 });
 
@@ -501,6 +700,7 @@ btnPushDemo.on('click', function() {
 });
 
 monitorearPermisosNotificacion();
+inicializarAutenticacion();
 
 btnActivadas.on( 'click', function() {
 

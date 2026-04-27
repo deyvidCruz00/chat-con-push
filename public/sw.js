@@ -134,40 +134,52 @@ self.addEventListener('sync', e => {
 // Escuchar PUSH
 self.addEventListener('push', e => {
 
-    // console.log(e);
+    let data = {};
 
-    const data = JSON.parse( e.data.text() );
+    if (e.data) {
+        try {
+            data = JSON.parse(e.data.text());
+        } catch (error) {
+            data = { titulo: 'Notificación', cuerpo: e.data.text() };
+        }
+    }
 
-    // console.log(data);
-
-
-    const title = data.titulo;
+    const title = data.titulo || 'Notificación Push';
     const options = {
-        body: data.cuerpo,
-        // icon: 'img/icons/icon-72x72.png',
-        icon: `img/avatars/${ data.usuario }.jpg`,
-        badge: 'img/favicon.ico',
-        image: 'https://vignette.wikia.nocookie.net/marvelcinematicuniverse/images/5/5b/Torre_de_los_Avengers.png/revision/latest?cb=20150626220613&path-prefix=es',
-        vibrate: [125,75,125,275,200,275,125,75,125,275,200,600,200,600],
-        openUrl: '/',
+        body: data.cuerpo || 'Tienes una nueva notificación',
+        icon: data.icon || `img/avatars/${ data.usuario || 'spiderman' }.jpg`,
+        badge: data.badge || 'img/favicon.ico',
+        image: data.image,
+        tag: data.tag || 'chat-push',
+        renotify: !!data.renotify,
+        requireInteraction: !!data.requireInteraction,
+        silent: !!data.silent,
+        vibrate: Array.isArray(data.vibrate) ? data.vibrate : [200, 80, 200],
+        timestamp: data.timestamp || Date.now(),
+        lang: data.lang || 'es-CO',
+        dir: data.dir || 'auto',
         data: {
-            // url: 'https://google.com',
-            url: '/',
-            id: data.usuario
+            url: (data.data && data.data.url) || '/',
+            id: data.usuario || 'spiderman',
+            user: data.data && data.data.user
         },
-        actions: [
+        actions: Array.isArray(data.actions) ? data.actions : [
             {
-                action: 'thor-action',
-                title: 'Thor',
-                icon: 'img/avatar/thor.jpg'
+                action: 'open-chat',
+                title: 'Abrir chat',
+                icon: 'img/avatars/spiderman.jpg'
             },
             {
-                action: 'ironman-action',
-                title: 'Ironman',
-                icon: 'img/avatar/ironman.jpg'
+                action: 'close-notification',
+                title: 'Cerrar',
+                icon: 'img/avatars/ironman.jpg'
             }
         ]
     };
+
+    if (options.silent) {
+        delete options.vibrate;
+    }
 
 
     e.waitUntil( self.registration.showNotification( title, options) );
@@ -220,8 +232,13 @@ self.addEventListener('notificationclose', e => {
 self.addEventListener('notificationclick', e => {
     const notificacion = e.notification;
     const url = notificacion.data && notificacion.data.url ? notificacion.data.url : '/';
+    const accion = e.action;
 
     e.notification.close();
+
+    if (accion === 'close-notification') {
+        return;
+    }
 
     const respuesta = clients.matchAll({
         type: 'window',

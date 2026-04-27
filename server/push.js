@@ -2,13 +2,14 @@
 const fs = require('fs');
 
 
-const urlsafeBase64 = require('urlsafe-base64');
 const vapid = require('./vapid.json');
 
 const webpush = require('web-push');
 
+const vapidSubject = process.env.VAPID_SUBJECT || 'mailto:tu_correo_institucional@tuuniversidad.edu.co';
+
 webpush.setVapidDetails(
-    'mailto:fercho.96lds@gmail.com',
+    vapidSubject,
     vapid.publicKey,
     vapid.privateKey
   );
@@ -20,12 +21,19 @@ let suscripciones = require('./subs-db.json');
 
 
 module.exports.getKey = () => {
-    return urlsafeBase64.decode( vapid.publicKey );
+    return vapid.publicKey;
 };
 
 
 
 module.exports.addSubscription = ( suscripcion ) => {
+    const existe = suscripciones.some(subs => subs.endpoint === suscripcion.endpoint);
+
+    if (existe) {
+        console.log('Suscripción ya existe, no se duplica');
+        return;
+    }
+
     console.log('Antes enviar suscripción ');
     suscripciones.push( suscripcion );
 
@@ -46,12 +54,12 @@ module.exports.sendPush = ( post ) => {
 
 
         const pushProm = webpush.sendNotification( suscripcion , JSON.stringify( post ) )
-            .then( console.log( 'Notificacion enviada ') )
+            .then(() => console.log( 'Notificacion enviada ') )
             .catch( err => {
 
                 console.log('Notificación falló');
 
-                if ( err.statusCode === 410 ) { // GONE, ya no existe
+                if ( err.statusCode === 410 || err.statusCode === 404 ) {
                     suscripciones[i].borrar = true;
                 }
 

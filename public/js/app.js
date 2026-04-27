@@ -46,9 +46,53 @@ var txtMensaje  = $('#txtMensaje');
 
 var btnActivadas    = $('.btn-noti-activadas');
 var btnDesactivadas = $('.btn-noti-desactivadas');
+var btnPushDemo     = $('#btn-push-demo');
+var pushStatusBadge = $('#push-permission-status');
 
 // El usuario, contiene el ID del hÃ©roe seleccionado
 var usuario;
+
+
+function normalizarPermiso(permiso) {
+    if (permiso === 'granted') return 'Granted';
+    if (permiso === 'denied') return 'Denied';
+    return 'Default';
+}
+
+function actualizarIndicadorPermisos(permisoActual) {
+    if (!pushStatusBadge || pushStatusBadge.length === 0) return;
+
+    var permiso = permisoActual || (window.Notification ? Notification.permission : 'default');
+    var permisoClase = (permiso === 'granted' || permiso === 'denied') ? permiso : 'default';
+    var permisoTexto = normalizarPermiso(permiso);
+
+    pushStatusBadge
+        .removeClass('granted denied default')
+        .addClass(permisoClase)
+        .text(permisoTexto);
+}
+
+function monitorearPermisosNotificacion() {
+    actualizarIndicadorPermisos();
+
+    if (!('permissions' in navigator) || !navigator.permissions.query) {
+        return;
+    }
+
+    navigator.permissions.query({ name: 'notifications' })
+        .then(function(permisoStatus) {
+            permisoStatus.onchange = function() {
+                actualizarIndicadorPermisos(permisoStatus.state);
+            };
+        })
+        .catch(function() {
+            // Algunos navegadores no exponen notifications en Permissions API.
+        });
+
+    window.addEventListener('focus', function() {
+        actualizarIndicadorPermisos();
+    });
+}
 
 
 
@@ -234,6 +278,8 @@ isOnline();
 // Notificaciones
 function verificaSuscripcion( activadas ) {
 
+    actualizarIndicadorPermisos();
+
     if ( activadas ) {
         
         btnActivadas.removeClass('oculto');
@@ -297,6 +343,7 @@ async function solicitarPermisoNotificaciones() {
   }
 
   const permiso = await Notification.requestPermission();
+    actualizarIndicadorPermisos(permiso);
   return permiso === 'granted';
 }
 
@@ -310,11 +357,23 @@ function getPublicKey() {
     //     .then( console.log );
 
     return fetch('api/key')
-        .then( res => res.arrayBuffer())
-        // returnar arreglo, pero como un Uint8array
-        .then( key => new Uint8Array(key) );
+        .then( res => res.json())
+        .then( data => urlBase64ToUint8Array(data.publicKey) );
 
 
+}
+
+function urlBase64ToUint8Array(base64String) {
+    var padding = '='.repeat((4 - base64String.length % 4) % 4);
+    var base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    var rawData = window.atob(base64);
+    var outputArray = new Uint8Array(rawData.length);
+
+    for (var i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+    }
+
+    return outputArray;
 }
 
 // getPublicKey().then( console.log );
@@ -375,7 +434,7 @@ btnDesactivadas.on('click', async function() {
         await fetch('api/subscribe', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(subscription)
+            body: JSON.stringify(subscription.toJSON())
         });
 
         verificaSuscripcion(subscription);
@@ -397,6 +456,51 @@ function cancelarSuscripcion() {
 
 
 }
+
+btnPushDemo.on('click', function() {
+
+    var payload = {
+        titulo: 'Chat de Superhéroes',
+        cuerpo: 'Mensaje especial para ' + (usuario || 'spiderman') + '. Revisa las acciones.',
+        usuario: usuario || 'spiderman',
+        icon: 'img/icons/icon-192x192.png',
+        badge: 'img/favicon.ico',
+        image: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=1200&q=80',
+        tag: 'chat-demo',
+        renotify: true,
+        requireInteraction: true,
+        vibrate: [200, 100, 200],
+        timestamp: Date.now(),
+        actions: [
+            { action: 'open-chat', title: 'Abrir chat', icon: 'img/avatars/spiderman.jpg' },
+            { action: 'close-notification', title: 'Cerrar', icon: 'img/avatars/ironman.jpg' }
+        ],
+        data: {
+            url: '/',
+            user: usuario || 'spiderman'
+        }
+    };
+
+    fetch('api/push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    })
+    .then(function(res) { return res.json(); })
+    .then(function() {
+        $.mdtoast('Push de ejemplo enviada', {
+            interaction: true,
+            interactionTimeout: 1200,
+            actionText: 'OK!'
+        });
+    })
+    .catch(function(err) {
+        console.log('Error al enviar push demo', err);
+    });
+
+});
+
+monitorearPermisosNotificacion();
 
 btnActivadas.on( 'click', function() {
 
